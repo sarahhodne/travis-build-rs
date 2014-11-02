@@ -1,0 +1,12 @@
+[package]
+
+name = "travis_build"
+version = "0.0.1"
+authors = ["Henrik Hodne <henrik@hodne.io>"]
+
+[[bin]]
+
+name = "travis_build"
+path = "src/main.rs"
+test = false
+doc = false
