@@ -1,4 +1,5 @@
 use serialize::json;
+use std::string::as_string;
 
 pub struct Payload {
     pub job: Job,
@@ -38,35 +39,38 @@ pub enum GitStrategy {
     Tarball,
 }
 
+macro_rules! json_to (
+    ($r:expr, String) => ($r.as_string());
+    ($r:expr, bool) => ($r.as_boolean());
+    ($r:expr, u64) => ($r.as_u64());
+    ($r:expr, $t:ident) => (Some(try!($t::from_json($r))));
+)
+
+macro_rules! find_key (
+        ($j:expr, $t:ident, $key:expr) => (match $j.find(&*::std::string::as_string($key)) {
+            Some(v) => try!(json_to!(v, $t).ok_or(json::ApplicationError(format!("{} must be a string", $key)))),
+            None => return Err(json::MissingFieldError($key.to_string())),
+        });
+        ($j:expr, $t:ident, $key:expr, Optional) => (try!($j.find(&*::std::string::as_string($key)).map_or(Ok(None), |r| json_to!(r, $t).ok_or(json::ApplicationError(format!("{} must be a string", $key))).map(Some))));
+        ($j:expr, $t:ident, $key:expr, $default:expr) => (match $j.find(&*::std::string::as_string($key)) {
+            Some(v) => try!(json_to!(v, $t).ok_or(json::ApplicationError(format!("{} must be a string", $key)))),
+            None => $default,
+        });
+)
+
 impl Payload {
     pub fn from_json(j: &json::Json) -> json::DecodeResult<Payload> {
         if !j.is_object() {
             return Err(json::ApplicationError("payload must be an object".to_string()));
         }
 
-        let job = match j.find(&"job".to_string()) {
-            Some(j) => try!(Job::from_json(j)),
-            None => return Err(json::MissingFieldError("job".to_string())),
-        };
-        let repository = match j.find(&"repository".to_string()) {
-            Some(r) => try!(Repository::from_json(r)),
-            None => return Err(json::MissingFieldError("repository".to_string())),
-        };
-        let config = match j.find(&"config".to_string()) {
-            Some(c) => try!(Config::from_json(c)),
-            None => return Err(json::MissingFieldError("config".to_string())),
-        };
-        let paranoid = try!(j.find(&"paranoid".to_string()).unwrap_or(&json::Boolean(false)).as_boolean().ok_or(json::ApplicationError("paranoid must be a bool".to_string())));
-        let fix_resolv_conf = !try!(j.find(&"skip_resolv_updates".to_string()).unwrap_or(&json::Boolean(true)).as_boolean().ok_or(json::ApplicationError("skip_resolv_updates must be a bool".to_string())));
-        let fix_etc_hosts = !try!(j.find(&"skip_etc_hosts_fix".to_string()).unwrap_or(&json::Boolean(true)).as_boolean().ok_or(json::ApplicationError("skip_etc_hosts_fix must be a bool".to_string())));
-
         Ok(Payload {
-            job: job,
-            repository: repository,
-            config: config,
-            paranoid: paranoid,
-            fix_resolv_conf: fix_resolv_conf,
-            fix_etc_hosts: fix_etc_hosts,
+            job: find_key!(j, Job, "job"),
+            repository: find_key!(j, Repository, "repository"),
+            config: find_key!(j, Config, "repository"),
+            paranoid: find_key!(j, bool, "paranoid", false),
+            fix_resolv_conf: !find_key!(j, bool, "skip_resolv_updates", true),
+            fix_etc_hosts: !find_key!(j, bool, "skip_etc_hosts_fix", true),
         })
     }
 }
@@ -77,25 +81,11 @@ impl Job {
             return Err(json::ApplicationError("job must be an object".to_string()));
         }
 
-        let branch = match j.find(&"branch".to_string()) {
-            Some(u) => try!(u.as_string().ok_or(json::ApplicationError("job.branch must be a string".to_string()))),
-            None => return Err(json::MissingFieldError("branch".to_string())),
-        };
-        let commit = match j.find(&"commit".to_string()) {
-            Some(u) => try!(u.as_string().ok_or(json::ApplicationError("job.commit must be a string".to_string()))),
-            None => return Err(json::MissingFieldError("commit".to_string())),
-        };
-        let git_ref = j.find(&"ref".to_string()).map(|r| r.as_string().ok_or(json::ApplicationError("job.ref must be a string".to_string()))).map(|r| r.to_string());
-        let pull_request = match j.find(&"pull_request".to_string()) {
-            Some(u) => try!(u.as_boolean().ok_or(json::ApplicationError("job.pull_request must be a boolean".to_string()))),
-            None => return Err(json::MissingFieldError("pull_request".to_string())),
-        };
-
         Ok(Job {
-            branch: branch.to_string(),
-            commit: commit.to_string(),
-            git_ref: git_ref,
-            pull_request: pull_request,
+            branch: find_key!(j, String, "branch").to_string(),
+            commit: find_key!(j, String, "commit").to_string(),
+            git_ref: find_key!(j, String, "ref", Optional).map(|s| s.to_string()),
+            pull_request: find_key!(j, bool, "pull_request"),
         })
     }
 }
@@ -106,46 +96,43 @@ impl Repository {
             return Err(json::ApplicationError("repository must be an object".to_string()));
         }
 
-        let slug = match j.find(&"slug".to_string()) {
-            Some(u) => try!(u.as_string().ok_or(json::ApplicationError("repository.branch must be a string".to_string()))),
-            None => return Err(json::MissingFieldError("slug".to_string())),
-        };
-        let source_url = match j.find(&"source_url".to_string()) {
-            Some(u) => try!(u.as_string().ok_or(json::ApplicationError("repository.commit must be a string".to_string()))),
-            None => return Err(json::MissingFieldError("source_url".to_string())),
-        };
-
         Ok(Repository {
-            slug: slug.to_string(),
-            source_url: source_url.to_string(),
+            slug: find_key!(j, String, "slug").to_string(),
+            source_url: find_key!(j, String, "source_url").to_string(),
         })
     }
 }
 
 impl Config {
     pub fn from_json(j: &json::Json) -> json::DecodeResult<Config> {
-        let git_config = try!(GitConfig::from_json(j.find(&"git".to_string()).unwrap_or(&json::Null)));
+        // let git_config = try!(GitConfig::from_json(j.find(&"git".to_string()).unwrap_or(&json::Null)));
         let services_json: Vec<json::Json> = try!(j.find(&"services".to_string()).unwrap_or(&json::List(vec![])).as_list().ok_or(json::ApplicationError("config.services must be a list of strings".to_string()))).to_vec();
-        let services = services_json.map_in_place(|e| e.as_string().unwrap().to_string());
+        let services = services_json.iter().map(|e| e.as_string().unwrap().to_string()).collect();
 
         Ok(Config {
-            git: git_config,
+            git: find_key!(j, GitConfig, "git", GitConfig::default()),
             services: services,
         })
     }
 }
 
 impl GitConfig {
+    pub fn default() -> GitConfig {
+        GitConfig {
+            depth: 50,
+            submodules: true,
+            submodules_depth: None,
+            strategy: Clone,
+        }
+    }
+
     pub fn from_json(j: &json::Json) -> json::DecodeResult<GitConfig> {
-        let depth = try!(j.find(&"depth".to_string()).unwrap_or(&json::U64(50)).as_u64().ok_or(json::ApplicationError("git.depth must be an int".to_string())));
-        let submodules = try!(j.find(&"submodules".to_string()).unwrap_or(&json::Boolean(true)).as_boolean().ok_or(json::ApplicationError("git.submodules must be a bool".to_string())));
-        let submodules_depth = try!(j.find(&"submodules_depth".to_string()).map(|d| d.as_u64()).ok_or(json::ApplicationError("git.submodules_depth must be an int".to_string())));
-        let strategy = try!(GitStrategy::from_json(j.find(&"strategy".to_string()).unwrap_or(&json::String("clone".to_string()))));
+        let strategy = try!(GitStrategy::from_json(j.find(&*as_string("strategy")).unwrap_or(&json::String("clone".to_string()))));
 
         Ok(GitConfig {
-            depth: depth,
-            submodules: submodules,
-            submodules_depth: submodules_depth,
+            depth: find_key!(j, u64, "depth", 50),
+            submodules: find_key!(j, bool, "submodules", true),
+            submodules_depth: find_key!(j, u64, "submodules_depth", Optional),
             strategy: strategy,
         })
     }
