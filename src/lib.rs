@@ -18,3 +18,4 @@ pub mod script;
 pub mod script_templates;
 pub mod components;
 pub mod test_ast_runner;
+pub mod languages;

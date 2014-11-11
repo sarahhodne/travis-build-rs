@@ -23,6 +23,7 @@ pub struct Repository {
 }
 
 pub struct Config {
+    pub language: String,
     pub git: GitConfig,
     pub services: Vec<String>,
 }
@@ -110,6 +111,7 @@ impl Config {
         let services = services_json.iter().map(|e| e.as_string().unwrap().to_string()).collect();
 
         Ok(Config {
+            language: find_key!(j, String, "language", "ruby").to_string(),
             git: find_key!(j, GitConfig, "git", GitConfig::default()),
             services: services,
         })

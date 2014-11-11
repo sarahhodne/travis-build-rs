@@ -67,6 +67,11 @@ macro_rules! cmd(
     ($cmd:expr) => (::ast::Cmd($cmd, vec![]))
 )
 
+#[macro_export]
+macro_rules! ast_set(
+    ($key:ident = $value:expr) => (cmd!(ast::Envset(stringify!($key).to_string(), $value)));
+)
+
 /// Create a statement that contains the contained statements.
 ///
 /// # Example

@@ -6,7 +6,7 @@ pub fn git_checkout_ast(payload: &Payload) -> ast::Statement {
     ast_block!(
         cmd!(ast::Mkdir(Path::new("/home/travis/build")));
         cmd!(ast::Cd(Path::new("build")));
-        cmd!(ast::Envset("GIT_ASKPASS".to_string(), "echo".to_string()));
+        ast_set!(GIT_ASKPASS = "echo".to_string());
 
         ast_if! (!ast::IsDirectory(git_path(payload).join(Path::new(".git"))) {
             format_cmd!([EchoOption|AssertOption], "git clone {} {} {}", git_clone_args(payload), git_source_url(payload), git_path(payload).as_str().unwrap());

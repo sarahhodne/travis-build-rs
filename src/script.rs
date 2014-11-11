@@ -36,6 +36,8 @@ impl Script {
             self.apply_fixes();
             components::git::git_checkout_ast(&self.payload);
             components::services::start_services_ast(&self.payload);
+            self.enable_paranoid_mode();
+            self.export_vars();
         }
     }
 
@@ -55,6 +57,27 @@ impl Script {
             } else {
                 ast::Noop
             };
+        }
+    }
+
+    fn enable_paranoid_mode(&self) -> ast::Statement {
+        if !self.payload.paranoid {
+            return ast::Noop;
+        }
+
+        ast_block! {
+            cmd!(ast::Newline);
+            cmd!(ast::Echo("Sudo, the Firefox addon, setuid and setgid have been disabled.".to_string()));
+            format_cmd!("sudo -n sh -c \"sed -e \\'s/^%.*//\\' -i.bak /etc/sudoers && rm -f /etc/sudoers.d/travis && find / -perm -4000 -exec chmod a-s {{}} \\; 2>/dev/null\"");
+        }
+    }
+
+    fn export_vars(&self) -> ast::Statement {
+        ast_block! {
+            ast_set!(TRAVIS = "true".to_string());
+            ast_set!(CI = "true".to_string());
+            ast_set!(CONTINUOUS_INTEGRATION = "true".to_string());
+            ast_set!(HAS_JOSH_K_SEAL_OF_APPROVAL = "true".to_string());
         }
     }
 }
